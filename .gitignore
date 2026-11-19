@@ -1,4 +1,11 @@
 .DS_Store
 .env
+.venv
 
-data/
+/data/
+misc/
+
+.ruff_cache
+.cache
+
+**/*.private.*
