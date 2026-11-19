@@ -17,6 +17,7 @@
       "moby": false
     }
   },
+  "updateContentCommand": "uv sync",
   "remoteEnv": {
     "MARTIN_PORT": "3090",
     "MARTIN_CONTAINER_NAME": "martin-dev",
