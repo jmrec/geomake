@@ -11,3 +11,7 @@ misc/
 **/*.private.*
 
 site
+
+**/__pycache__/
+.pytest_cache
+*.pyc

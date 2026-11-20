@@ -8,3 +8,9 @@
 misc
 
 data/
+.cache
+.venv
+.ruff_cache
+.pytest_cache
+site
+**/__pycache__
