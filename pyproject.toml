@@ -12,6 +12,7 @@ dependencies = [
     "pytest>=9.2.0",
     "ruff>=0.17.5",
     "typer>=0.29.2",
+    "structlog>=26.1.0",
 ]
 
 [project.scripts]

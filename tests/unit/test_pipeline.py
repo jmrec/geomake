@@ -8,7 +8,10 @@ import re
 from pathlib import Path
 
 import pytest
+import structlog
 import yaml
+from structlog.testing import LogCapture
+from structlog.typing import EventDict
 
 from ph_administrative_boundaries.build import (
     BuildPipeline,
@@ -33,7 +36,7 @@ class FakeRunner:
         self.no_version: set[str] = set()
         self.calls: list[list[str]] = []
 
-    def run(self, argv: list[str]) -> str:
+    def run(self, argv: list[str], *, stream: bool = False) -> str:
         if argv[1:] == ["--version"]:
             if argv[0] in self.no_version:
                 raise ToolError(f"{argv[0]} has no --version")
@@ -366,3 +369,40 @@ def test_invalid_references_are_rejected(
 
     with pytest.raises(ManifestError, match=re.escape(message)):
         YamlManifest().load(root / "manifest.yml")
+
+
+@pytest.fixture()
+def logs() -> list[EventDict]:
+    capture = LogCapture()
+    structlog.configure(processors=[structlog.contextvars.merge_contextvars, capture])
+    return capture.entries
+
+
+def test_logs_each_step_and_cache_hits(
+    root: Path, runner: FakeRunner, logs: list[EventDict]
+) -> None:
+    write_country(root)
+    make_pipeline(root, runner).build("country")
+    logs.clear()
+
+    make_pipeline(root, runner).build("country")
+
+    cached = [e for e in logs if e["event"] == "step_cached"]
+    assert [e["step"] for e in cached] == [1, 2]
+    assert all(e["dataset"] == "country" for e in cached)
+
+
+def test_logs_command_for_steps_that_run(
+    root: Path, runner: FakeRunner, logs: list[EventDict]
+) -> None:
+    write_country(root)
+
+    make_pipeline(root, runner).build("country")
+
+    started = [e for e in logs if e["event"] == "step_started"]
+    assert [(e["step"], e["tool"]) for e in started] == [
+        (1, "mapshaper"),
+        (2, "tippecanoe"),
+    ]
+    assert started[0]["command"].startswith("mapshaper ")
+    assert [e["event"] for e in logs][-1] == "build_finished"

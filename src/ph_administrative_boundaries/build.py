@@ -1,18 +1,26 @@
 """Run each dataset's steps in order, skipping any step whose inputs are unchanged."""
 
+import codecs
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
+import time
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+import structlog
+
 from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
 from ph_administrative_boundaries.manifest import PLACEHOLDER, YamlManifest
 from ph_administrative_boundaries.types import Artifact, DatasetSpec, Step
+
+log = structlog.get_logger()
 
 
 class ToolError(RuntimeError):
@@ -24,11 +32,15 @@ class StepError(RuntimeError):
 
 
 class Runner(Protocol):
-    def run(self, argv: list[str]) -> str: ...
+    def run(self, argv: list[str], *, stream: bool = False) -> str: ...
 
 
 class SubprocessRunner:
-    def run(self, argv: list[str]) -> str:
+    """Run a tool, either capturing its output or logging it line by line."""
+
+    def run(self, argv: list[str], *, stream: bool = False) -> str:
+        if stream:
+            return self._stream(argv)
         try:
             result = subprocess.run(argv, check=False, capture_output=True, text=True)
         except FileNotFoundError as exc:
@@ -38,6 +50,38 @@ class SubprocessRunner:
                 f"{argv[0]} exited with {result.returncode}: {result.stderr.strip()}"
             )
         return result.stdout or result.stderr
+
+    def _stream(self, argv: list[str]) -> str:
+        try:
+            proc = subprocess.Popen(
+                argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
+        except FileNotFoundError as exc:
+            raise ToolError(f"{argv[0]} is not installed or not on PATH") from exc
+        assert proc.stdout is not None
+        tool = Path(argv[0]).name
+        tail: deque[str] = deque(maxlen=20)
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pending = ""
+
+        def emit(raw: str) -> None:
+            line = raw.rsplit("\r", 1)[-1].rstrip()
+            if line:
+                tail.append(line)
+                log.info("tool_output", tool=tool, line=line)
+
+        with proc.stdout as out:
+            for chunk in iter(lambda: os.read(out.fileno(), 4096), b""):
+                pending += decoder.decode(chunk)
+                *lines, pending = pending.split("\n")
+                for line in lines:
+                    emit(line)
+            emit(pending + decoder.decode(b"", final=True))
+        returncode = proc.wait()
+        if returncode != 0:
+            last = tail[-1] if tail else ""
+            raise ToolError(f"{tool} exited with {returncode}: {last}")
+        return "\n".join(tail)
 
 
 def render(run: str, paths: Mapping[str, Path]) -> list[str]:
@@ -90,11 +134,21 @@ class BuildPipeline:
     workspace: Path
     output_dir: Path
     keep_intermediates: bool = False
+    stream: bool = False
 
     def build(self, name: str) -> list[Artifact]:
+        started = time.monotonic()
         spec = self.manifest.get(name)
-        sources = self.ingestor.ingest(spec)
-        final = self._run_steps(spec, sources)
+        with structlog.contextvars.bound_contextvars(dataset=spec.name):
+            log.info("build_started", steps=len(spec.steps))
+            sources = self.ingestor.ingest(spec)
+            final = self._run_steps(spec, sources)
+            log.info(
+                "build_finished",
+                out=str(final.path),
+                sha256=final.sha256,
+                duration_s=round(time.monotonic() - started, 2),
+            )
         # Merged glob copies are scratch space; declared files are never removed.
         if not self.keep_intermediates:
             for key, artifact in sources.items():
@@ -136,16 +190,45 @@ class BuildPipeline:
             sorted((name, art.sha256) for name, art in inputs.items()),
             self._tool_version(step),
         )
-        if not self.cache.is_fresh(key, dest):
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.unlink(missing_ok=True)
-            paths = {name: art.path for name, art in inputs.items()}
-            paths["out"] = dest
-            self.runner.run(render(step.run, paths))
-            if not dest.is_file():
-                raise StepError(f"'{spec.name}' step {index} wrote no file to {dest}")
-            self.cache.record(key, dest)
+        context = {"step": index, "step_id": step.id}
+        with structlog.contextvars.bound_contextvars(**context):
+            if self.cache.is_fresh(key, dest):
+                log.info("step_cached", out=str(dest))
+            else:
+                self._execute(spec, index, step, inputs, dest, key)
         return Artifact(dest, sha256_file(dest))
+
+    def _execute(
+        self,
+        spec: DatasetSpec,
+        index: int,
+        step: Step,
+        inputs: dict[str, Artifact],
+        dest: Path,
+        key: str,
+    ) -> None:
+        started = time.monotonic()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.unlink(missing_ok=True)
+        paths = {name: art.path for name, art in inputs.items()}
+        paths["out"] = dest
+        argv = render(step.run, paths)
+        log.info(
+            "step_started",
+            steps=len(spec.steps),
+            tool=argv[0],
+            command=shlex.join(argv),
+        )
+        self.runner.run(argv, stream=self.stream)
+        if not dest.is_file():
+            raise StepError(f"'{spec.name}' step {index} wrote no file to {dest}")
+        self.cache.record(key, dest)
+        log.info(
+            "step_finished",
+            out=str(dest),
+            size_bytes=dest.stat().st_size,
+            duration_s=round(time.monotonic() - started, 2),
+        )
 
     def _destination(self, spec: DatasetSpec, index: int, step: Step) -> Path:
         if index == len(spec.steps):

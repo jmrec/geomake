@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
+import structlog
 import typer
 
 from ph_administrative_boundaries.build import (
@@ -11,6 +12,7 @@ from ph_administrative_boundaries.build import (
     ToolError,
 )
 from ph_administrative_boundaries.ingest import LocalDataIngestor
+from ph_administrative_boundaries.logs import LogFormat, configure_logging
 from ph_administrative_boundaries.manifest import ManifestError, YamlManifest
 
 app = typer.Typer(help="Build vector tiles of Philippine administrative boundaries.")
@@ -50,8 +52,22 @@ def build(
             help="Keep the merged GeoJSON built from a glob source",
         ),
     ] = False,
+    log_format: Annotated[
+        LogFormat,
+        typer.Option(
+            "--log-format",
+            help="console: readable lines; json: one JSON object per line",
+        ),
+    ] = LogFormat.console,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet", "-q", help="Show only the built artifacts, not the logs"
+        ),
+    ] = False,
 ) -> None:
     """Run every step declared for a dataset, in order."""
+    configure_logging(log_format, quiet=quiet)
     workspace.mkdir(parents=True, exist_ok=True)
     destination = output_dir or manifest.parent / "data" / "processed"
     try:
@@ -63,10 +79,11 @@ def build(
             workspace=workspace,
             output_dir=destination,
             keep_intermediates=keep_intermediates,
+            stream=not quiet,
         )
         artifacts = pipeline.build(name)
     except (ManifestError, ToolError, StepError, FileNotFoundError) as exc:
-        typer.echo(f"error: {exc}", err=True)
+        structlog.get_logger().error("build_failed", dataset=name, error=str(exc))
         raise typer.Exit(1) from exc
     for artifact in artifacts:
         typer.echo(f"{artifact.path}  {artifact.sha256}")

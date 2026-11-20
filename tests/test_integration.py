@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from ph_administrative_boundaries.build import (
     BuildPipeline,
     JsonCache,
+    Runner,
     SubprocessRunner,
 )
 from ph_administrative_boundaries.cli import app
@@ -44,10 +45,10 @@ class CountingRunner:
         self.inner = SubprocessRunner()
         self.calls: list[list[str]] = []
 
-    def run(self, argv: list[str]) -> str:
+    def run(self, argv: list[str], *, stream: bool = False) -> str:
         if argv[1:] != ["--version"]:
             self.calls.append([*argv])
-        return self.inner.run(argv)
+        return self.inner.run(argv, stream=stream)
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +71,7 @@ def project(tmp_path: Path, source_slice: Path) -> Path:
     return tmp_path
 
 
-def pipeline(root: Path, runner: object, manifest: Path | None = None) -> BuildPipeline:
+def pipeline(root: Path, runner: Runner, manifest: Path | None = None) -> BuildPipeline:
     workspace = root / ".cache" / "build"
     return BuildPipeline(
         manifest=YamlManifest().load(manifest or root / "manifest.yml"),
