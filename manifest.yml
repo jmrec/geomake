@@ -1,15 +1,81 @@
 datasets:
-  regions:
-    source: raw/regions/*.json
+  boundaries:
+    source:
+      country: raw/Country/PH_Adm0_Country.shp
+      regions: raw/Regions/PH_Adm1_Regions.shp
+      provdists: raw/ProvDists/PH_Adm2_ProvDists.shp
+      municities: raw/MuniCities/PH_Adm3_MuniCities.shp
+      bgysubmuns: raw/BgySubMuns/PH_Adm4_BgySubMuns.shp
+
     steps:
-      - run: >
-          mapshaper -i {in} -clean
-          -o {out} precision=0.00001
-      - run: >
+      - id: country_geo
+        run: >
+          mapshaper -i {country} -proj wgs84 -clean allow-overlaps
+          -o {out} precision=0.000001
+      - id: country_tiles
+        run: >
           tippecanoe -o {out} -f -P
-          --layer=regions -Z4 -z14
+          --layer=PH_Adm0_Country -Z0 -z12
+          --simplify-only-low-zooms
+          {country_geo}
+        out: PH_Adm0_Country.pmtiles
+
+      - id: regions_geo
+        run: >
+          mapshaper -i {regions} -proj wgs84 -clean allow-overlaps
+          -o {out} precision=0.000001
+      - id: regions_tiles
+        run: >
+          tippecanoe -o {out} -f -P
+          --layer=PH_Adm1_Regions -Z0 -z12
           --simplify-only-low-zooms
           --detect-shared-borders
-          --coalesce-densest-as-needed
-          {in}
-        out: regions.pmtiles
+          {regions_geo}
+        out: PH_Adm1_Regions.pmtiles
+
+      - id: provdists_geo
+        run: >
+          mapshaper -i {provdists} -proj wgs84 -clean allow-overlaps
+          -o {out} precision=0.000001
+      - id: provdists_tiles
+        run: >
+          tippecanoe -o {out} -f -P
+          --layer=PH_Adm2_ProvDists -Z3 -z12
+          --simplify-only-low-zooms
+          --detect-shared-borders
+          {provdists_geo}
+        out: PH_Adm2_ProvDists.pmtiles
+
+      - id: municities_geo
+        run: >
+          mapshaper -i {municities} -proj wgs84 -clean allow-overlaps
+          -o {out} precision=0.000001
+      - id: municities_tiles
+        run: >
+          tippecanoe -o {out} -f -P
+          --layer=PH_Adm3_MuniCities -Z5 -z12
+          --simplify-only-low-zooms
+          --detect-shared-borders
+          --drop-densest-as-needed
+          {municities_geo}
+        out: PH_Adm3_MuniCities.pmtiles
+
+      - id: bgysubmuns_geo
+        run: >
+          mapshaper -i {bgysubmuns} -proj wgs84 -clean allow-overlaps
+          -o {out} precision=0.000001
+      - id: bgysubmuns_tiles
+        run: >
+          tippecanoe -o {out} -f -P
+          --layer=PH_Adm4_BgySubMuns -Z6 -z12
+          --simplify-only-low-zooms
+          --detect-shared-borders
+          --drop-densest-as-needed
+          {bgysubmuns_geo}
+        out: PH_Adm4_BgySubMuns.pmtiles
+
+      - run: >
+          tile-join -o {out} -f -pk
+          {country_tiles} {regions_tiles} {provdists_tiles}
+          {municities_tiles} {bgysubmuns_tiles}
+        out: PH_Adm_Boundaries.pmtiles
