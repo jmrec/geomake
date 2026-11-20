@@ -5,11 +5,9 @@ import typer
 
 from ph_administrative_boundaries.build import (
     BuildPipeline,
-    EncoderConverter,
-    EncoderError,
     JsonCache,
-    MapshaperTransformer,
-    SubprocessTool,
+    StepError,
+    SubprocessRunner,
     ToolError,
 )
 from ph_administrative_boundaries.ingest import LocalDataIngestor
@@ -46,28 +44,28 @@ def build(
         ),
     ] = Path(".cache/build"),
     keep_intermediates: Annotated[
-        bool, typer.Option("--keep-intermediates", help="Keep normalized GeoJSON")
+        bool,
+        typer.Option(
+            "--keep-intermediates",
+            help="Keep the merged GeoJSON built from a glob source",
+        ),
     ] = False,
 ) -> None:
-    """Build every output declared for a dataset."""
+    """Run every step declared for a dataset, in order."""
     workspace.mkdir(parents=True, exist_ok=True)
     destination = output_dir or manifest.parent / "data" / "processed"
     try:
         pipeline = BuildPipeline(
             manifest=YamlManifest().load(manifest),
             ingestor=LocalDataIngestor(workspace),
-            transformer=MapshaperTransformer(
-                mapshaper=SubprocessTool("mapshaper"), workspace=workspace
-            ),
-            converter=EncoderConverter(
-                encoders={"pmtiles": SubprocessTool("tippecanoe")},
-                output_dir=destination,
-            ),
+            runner=SubprocessRunner(),
             cache=JsonCache(workspace / "cache.json"),
+            workspace=workspace,
+            output_dir=destination,
             keep_intermediates=keep_intermediates,
         )
         artifacts = pipeline.build(name)
-    except (ManifestError, ToolError, EncoderError, FileNotFoundError) as exc:
+    except (ManifestError, ToolError, StepError, FileNotFoundError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     for artifact in artifacts:

@@ -22,28 +22,31 @@ def sha256_file(path: Path) -> str:
 class LocalDataIngestor:
     workspace: Path = Path(".cache/build")
 
-    def ingest(self, spec: DatasetSpec) -> Artifact:
-        pattern = str(spec.source)
-        if has_magic(pattern):
-            return self._ingest_many(spec, [Path(p) for p in glob(pattern)])
-        if not spec.source.is_file():
-            raise FileNotFoundError(
-                f"dataset '{spec.name}' source is missing: {spec.source}"
-            )
-        return Artifact(path=spec.source, sha256=sha256_file(spec.source))
+    def ingest(self, spec: DatasetSpec) -> dict[str, Artifact]:
+        """One artifact per named source, in declaration order."""
+        return {
+            key: self._ingest_one(spec, key, path) for key, path in spec.sources.items()
+        }
 
-    def merged_path(self, spec: DatasetSpec) -> Path:
-        return self.workspace / "raw" / f"{spec.name}.geojson"
+    def merged_path(self, spec: DatasetSpec, key: str) -> Path:
+        return self.workspace / "raw" / spec.name / f"{key}.geojson"
 
-    def _ingest_many(self, spec: DatasetSpec, sources: list[Path]) -> Artifact:
-        if not sources:
+    def _ingest_one(self, spec: DatasetSpec, key: str, path: Path) -> Artifact:
+        if has_magic(str(path)):
+            matches = [Path(p) for p in glob(str(path))]
+            if not matches:
+                raise FileNotFoundError(
+                    f"dataset '{spec.name}' source '{key}' matched no files: {path}"
+                )
+            merged = self.merged_path(spec, key)
+            merged.parent.mkdir(parents=True, exist_ok=True)
+            merged.write_text(json.dumps(_combine(sorted(matches))))
+            return Artifact(path=merged, sha256=sha256_file(merged))
+        if not path.is_file():
             raise FileNotFoundError(
-                f"dataset '{spec.name}' source matched no files: {spec.source}"
+                f"dataset '{spec.name}' source '{key}' is missing: {path}"
             )
-        merged = self.merged_path(spec)
-        merged.parent.mkdir(parents=True, exist_ok=True)
-        merged.write_text(json.dumps(_combine(sorted(sources))))
-        return Artifact(path=merged, sha256=sha256_file(merged))
+        return Artifact(path=path, sha256=sha256_file(path))
 
 
 def _combine(sources: list[Path]) -> dict[str, Any]:

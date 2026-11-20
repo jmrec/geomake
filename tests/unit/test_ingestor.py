@@ -49,7 +49,12 @@ def declare(project: Path, source: str) -> DatasetSpec:
                 "datasets": {
                     "municities": {
                         "source": source,
-                        "outputs": {"pmtiles": {"layer": "municities"}},
+                        "steps": [
+                            {
+                                "run": "mapshaper -i {in} -o {out}",
+                                "out": "municities.geojson",
+                            }
+                        ],
                     }
                 }
             }
@@ -61,18 +66,20 @@ def declare(project: Path, source: str) -> DatasetSpec:
 def test_manifest_resolves_glob_under_data(
     project: Path, municities: DatasetSpec
 ) -> None:
-    assert municities.source == project / "data" / "raw" / "municities" / "*.json"
+    assert municities.sources == {
+        "source": project / "data" / "raw" / "municities" / "*.json"
+    }
 
 
 def test_ingestor_can_ingest_glob(
     municities: DatasetSpec, ingestor: LocalDataIngestor, workspace: Path
 ) -> None:
-    artifact = ingestor.ingest(municities)
+    artifact = ingestor.ingest(municities)["source"]
 
-    assert artifact.path == workspace / "raw" / "municities.geojson"
+    assert artifact.path == workspace / "raw" / "municities" / "source.geojson"
     assert artifact.sha256 == sha256_file(artifact.path)
 
-    sources = sorted(municities.source.parent.glob("*.json"))
+    sources = sorted(municities.sources["source"].parent.glob("*.json"))
     assert len(sources) > 1
     assert json.loads(artifact.path.read_text()) == {
         "type": "FeatureCollection",
@@ -87,8 +94,8 @@ def test_ingestor_can_ingest_glob(
 def test_glob_merge_is_deterministic(
     municities: DatasetSpec, ingestor: LocalDataIngestor
 ) -> None:
-    first = ingestor.ingest(municities)
-    second = ingestor.ingest(municities)
+    first = ingestor.ingest(municities)["source"]
+    second = ingestor.ingest(municities)["source"]
 
     assert second.sha256 == first.sha256
 
@@ -108,7 +115,7 @@ def test_ingestor_passes_a_single_source_through(
     source = "raw/municities/bgysubmuns-municity-1001301000.0.1.json"
     spec = declare(project, source)
 
-    artifact = ingestor.ingest(spec)
+    artifact = ingestor.ingest(spec)["source"]
 
     assert artifact.path == project / "data" / source
     assert artifact.sha256 == sha256_file(artifact.path)
@@ -120,5 +127,5 @@ def test_ingestor_reports_a_missing_source(
 ) -> None:
     spec = declare(project, "raw/missing.geojson")
 
-    with pytest.raises(FileNotFoundError, match="source is missing"):
+    with pytest.raises(FileNotFoundError, match="is missing"):
         ingestor.ingest(spec)
