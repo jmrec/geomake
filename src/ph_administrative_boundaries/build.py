@@ -1,129 +1,61 @@
+"""Run each dataset's steps in order, skipping any step whose inputs are unchanged."""
+
 import hashlib
 import json
-import shutil
+import re
+import shlex
 import subprocess
-from dataclasses import asdict, dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
-from ph_administrative_boundaries.ingest import sha256_file
-from ph_administrative_boundaries.types import (
-    Artifact,
-    Cache,
-    Converter,
-    DataIngestor,
-    DatasetSpec,
-    ExternalTool,
-    Manifest,
-    OutputSpec,
-    Transformer,
-)
-
-_OUTPUT_EXTENSIONS = {"pmtiles": ".pmtiles", "mlt": ".mlt"}
+from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
+from ph_administrative_boundaries.manifest import PLACEHOLDER, YamlManifest
+from ph_administrative_boundaries.types import Artifact, DatasetSpec, Step
 
 
 class ToolError(RuntimeError):
     pass
 
 
-class EncoderError(RuntimeError):
+class StepError(RuntimeError):
     pass
 
 
-@dataclass
-class SubprocessTool:
-    name: str
-    executable: str | None = None
+class Runner(Protocol):
+    def run(self, argv: list[str]) -> str: ...
 
-    def run(self, args: list[str]) -> None:
-        result = self._invoke([*args])
+
+class SubprocessRunner:
+    def run(self, argv: list[str]) -> str:
+        try:
+            result = subprocess.run(argv, check=False, capture_output=True, text=True)
+        except FileNotFoundError as exc:
+            raise ToolError(f"{argv[0]} is not installed or not on PATH") from exc
         if result.returncode != 0:
             raise ToolError(
-                f"{self.name} exited with {result.returncode}: {result.stderr.strip()}"
+                f"{argv[0]} exited with {result.returncode}: {result.stderr.strip()}"
             )
-
-    def version(self) -> str:
-        result = self._invoke(["--version"])
-        return (result.stdout or result.stderr).strip()
-
-    def _invoke(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        try:
-            return subprocess.run(
-                [self.executable or self.name, *args],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except FileNotFoundError as exc:
-            raise ToolError(f"{self.name} is not installed or not on PATH") from exc
+        return result.stdout or result.stderr
 
 
-@dataclass
-class MapshaperTransformer:
-    mapshaper: ExternalTool
-    workspace: Path
+def render(run: str, paths: Mapping[str, Path]) -> list[str]:
+    """Split a step into argv, replacing each `{name}` token by token.
 
-    def output_path(self, spec: DatasetSpec) -> Path:
-        return self.workspace / "normalized" / f"{spec.name}.geojson"
+    `paths` maps every name the step uses, including "out", to a path.
+    Splitting first keeps a path with spaces in one argument.
+    """
 
-    def transform(self, raw: Artifact, spec: DatasetSpec) -> Artifact:
-        out = self.output_path(spec)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        geometry = spec.geometry
+    def substitute(match: re.Match[str]) -> str:
+        return str(paths[match.group(1)])
 
-        args = ["-i", str(raw.path)]
-        if geometry.clean:
-            args.append("-clean")
-        if geometry.simplify_percent < 100:
-            args += [
-                "-simplify",
-                "visvalingam",
-                f"percentage={geometry.simplify_percent:g}%",
-                "keep-shapes",
-            ]
-        args += ["-o", str(out)]
-        if geometry.precision:
-            args.append(f"precision={geometry.precision:g}")
-
-        self.mapshaper.run(args)
-        return Artifact(path=out, sha256=sha256_file(out))
+    return [PLACEHOLDER.sub(substitute, token) for token in shlex.split(run)]
 
 
-@dataclass
-class EncoderConverter:
-    encoders: dict[str, ExternalTool]
-    output_dir: Path
-
-    def output_path(self, src: Artifact, out: OutputSpec) -> Path:
-        extension = _OUTPUT_EXTENSIONS.get(out.format, f".{out.format}")
-        return self.output_dir / f"{out.layer}{extension}"
-
-    def convert(self, src: Artifact, out: OutputSpec) -> Artifact:
-        encoder = self.encoders.get(out.format)
-        if encoder is None:
-            raise EncoderError(f"no encoder registered for format '{out.format}'")
-        dest = self.output_path(src, out)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        encoder.run(self._args(src, out, dest))
-        return Artifact(path=dest, sha256=sha256_file(dest))
-
-    @staticmethod
-    def _args(src: Artifact, out: OutputSpec, dest: Path) -> list[str]:
-        if out.format != "pmtiles":
-            raise EncoderError(f"unsupported output format '{out.format}'")
-        args = [
-            "-o",
-            str(dest),
-            "-f",
-            "-P",
-            "--simplify-only-low-zooms",
-            "--detect-shared-borders",
-            "--drop-densest-as-needed",
-            f"--layer={out.layer}",
-        ]
-        if out.min_zoom:
-            args.append(f"-Z{out.min_zoom}")
-        args.append(f"-z{out.max_zoom}" if out.max_zoom else "-zg")
-        return [*args, str(src.path)]
+def fingerprint(*parts: object) -> str:
+    payload = json.dumps(parts, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -149,46 +81,86 @@ class JsonCache:
         partial.replace(self.path)
 
 
-def fingerprint(*parts: object) -> str:
-    payload = json.dumps(parts, sort_keys=True, default=str)
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
-
-
 @dataclass
 class BuildPipeline:
-    manifest: Manifest
-    ingestor: DataIngestor
-    transformer: Transformer
-    converter: Converter
-    cache: Cache
+    manifest: YamlManifest
+    ingestor: LocalDataIngestor
+    runner: Runner
+    cache: JsonCache
+    workspace: Path
+    output_dir: Path
     keep_intermediates: bool = False
-
-    def ingest(self, name: str) -> Artifact:
-        return self.ingestor.ingest(self.manifest.get(name))
 
     def build(self, name: str) -> list[Artifact]:
         spec = self.manifest.get(name)
-        raw = self.ingestor.ingest(spec)
-
-        normalized_key = fingerprint("normalized", spec.name, asdict(spec.geometry))
-        normalized_path = self.transformer.output_path(spec)
-        if self.cache.is_fresh(normalized_key, normalized_path):
-            normalized = Artifact(normalized_path, sha256_file(normalized_path))
-        else:
-            normalized = self.transformer.transform(raw, spec)
-            self.cache.record(normalized_key, normalized.path)
-
-        artifacts: list[Artifact] = []
-        for output in spec.outputs:
-            dist_key = fingerprint("dist", normalized.sha256, asdict(output))
-            dist_path = self.converter.output_path(normalized, output)
-            if self.cache.is_fresh(dist_key, dist_path):
-                artifacts.append(Artifact(dist_path, sha256_file(dist_path)))
-            else:
-                artifact = self.converter.convert(normalized, output)
-                self.cache.record(dist_key, artifact.path)
-                artifacts.append(artifact)
-
+        sources = self.ingestor.ingest(spec)
+        final = self._run_steps(spec, sources)
+        # Merged glob copies are scratch space; declared files are never removed.
         if not self.keep_intermediates:
-            shutil.rmtree(normalized.path.parent, ignore_errors=True)
-        return artifacts
+            for key, artifact in sources.items():
+                if artifact.path != spec.sources[key]:
+                    artifact.path.unlink(missing_ok=True)
+        return [final]
+
+    def _run_steps(self, spec: DatasetSpec, sources: dict[str, Artifact]) -> Artifact:
+        names: dict[str, Artifact] = dict(sources)
+        # `{in}` is the sole source for the first step, then the previous output.
+        # Validation rejects `{in}` on the first step when there are several sources.
+        current = next(iter(sources.values()))
+        for index, step in enumerate(spec.steps, start=1):
+            reads = set(PLACEHOLDER.findall(step.run)) - {"out"}
+            inputs: dict[str, Artifact] = {
+                name: names[name] for name in reads if name != "in"
+            }
+            if "in" in reads:
+                inputs["in"] = current
+            current = self._run_step(spec, index, step, inputs)
+            if step.id is not None:
+                names[step.id] = current
+        return current
+
+    def _run_step(
+        self,
+        spec: DatasetSpec,
+        index: int,
+        step: Step,
+        inputs: dict[str, Artifact],
+    ) -> Artifact:
+        dest = self._destination(spec, index, step)
+        key = fingerprint(
+            "step",
+            spec.name,
+            index,
+            step.run,
+            step.out,
+            sorted((name, art.sha256) for name, art in inputs.items()),
+            self._tool_version(step),
+        )
+        if not self.cache.is_fresh(key, dest):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.unlink(missing_ok=True)
+            paths = {name: art.path for name, art in inputs.items()}
+            paths["out"] = dest
+            self.runner.run(render(step.run, paths))
+            if not dest.is_file():
+                raise StepError(f"'{spec.name}' step {index} wrote no file to {dest}")
+            self.cache.record(key, dest)
+        return Artifact(dest, sha256_file(dest))
+
+    def _destination(self, spec: DatasetSpec, index: int, step: Step) -> Path:
+        if index == len(spec.steps):
+            return self.output_dir / (step.out or "")
+        default = f"{step.id}.geojson" if step.id else f"step{index}.geojson"
+        return self.workspace / "steps" / spec.name / (step.out or default)
+
+    def _tool_version(self, step: Step) -> str:
+        """Best-effort version of the step's tool, part of its cache key.
+
+        Tools that have no `--version` still work; they just don't invalidate
+        the cache when upgraded.
+        """
+        tool = shlex.split(step.run)[0]
+        try:
+            return self.runner.run([tool, "--version"]).strip()
+        except ToolError:
+            return "unknown"

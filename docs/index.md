@@ -6,7 +6,8 @@ icon: lucide/rocket
 
 !!! Important
 
-    This is primarily for processing administrative boundaries in the Philippines as a utility project for [Open Data Portal Extension](https://datax-docs.jmrecondo.com), particularly manipulation and conversion of GeoJSON into PMTiles and MapLibre Tiles (MLT).
+    This is primarily for processing administrative boundaries in the Philippines as a utility project for [Open Data Portal Extension](https://datax-docs.jmrecondo.com). However, it supports any other workflow provided you have the command installed and executable via the CLI.
+    
 
     The Dev Container makes the `mapshaper`, `tippecanoe`, and `mlt` commands available in the CLI.
 
@@ -21,6 +22,11 @@ icon: lucide/rocket
     **Steps**
 
     1. Open in the IDE of your choice and reopen in container. 
+    2. Run
+
+        ```bash
+        uv sync
+        ```
 
 === "Manual"
 
@@ -49,15 +55,15 @@ icon: lucide/rocket
 
 ### Building with the CLI
 
-[manifest.yml](/schema) declares each dataset's source, geometry pipeline, and outputs:
+[manifest.yml](/schema) declares each dataset's source and its ordered steps:
 
 ```bash
 uv run cli build <dataset>
 ```
 
-Finished tiles are written to `data/processed/` (override with `--output-dir`). Intermediates are dropped after each run unless you pass `--keep-intermediates`.
+Finished tiles are written to `data/processed/` (override with `--output-dir`). Each step's output is cached, so rebuilding only reruns steps whose input, command, or tool version changed.
 
-A dataset's `source` resolves under the manifest's `data/` directory and may be a single file or a glob (e.g. `raw/municities/*.json`). Glob matches are merged into one FeatureCollection (written to `.cache/build/raw/`) before normalization.
+A dataset's `source` resolves under the manifest's `data/` directory and may be a single file or a glob (e.g. `raw/municities/*.json`), or a mapping of names to such paths. Glob matches are merged into one FeatureCollection (written to `.cache/build/raw/<dataset>/`), which is what steps read. That merged copy is deleted after each run unless you pass `--keep-intermediates`.
 
 <!-- ## Good defaults I found
 

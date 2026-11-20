@@ -1,25 +1,15 @@
 datasets:
-  country:
-    # Source reads inside `data/`
-    source: raw/country.0.1.json
-
-    geometry:
-      # Pass mapshaper flags to override this block.
-      # e.g., -clean -simplify visvalingam percentage=10% keep-shapes -o out.geojson precision=0.00001
-      #
-      # Useful if a configuration is not in this manifest.
-      #
-      # raw:
-
-      clean: true
-      precision: 0.00001
-      simplify:
-        method: visvalingam
-        percent: 10
-        keep_shapes: true
-    outputs:
-      pmtiles: { layer: barangays, minzoom: 4, maxzoom: 14 }
-        # raw:
-
-      # mlt: { layer: barangays }
-        # raw:
+  regions:
+    source: raw/regions/*.json
+    steps:
+      - run: >
+          mapshaper -i {in} -clean
+          -o {out} precision=0.00001
+      - run: >
+          tippecanoe -o {out} -f -P
+          --layer=regions -Z4 -z14
+          --simplify-only-low-zooms
+          --detect-shared-borders
+          --coalesce-densest-as-needed
+          {in}
+        out: regions.pmtiles

@@ -1,8 +1,7 @@
-"""Integration tests for the build flow described by `types.py`."""
+"""Integration tests that run the real mapshaper and tippecanoe binaries."""
 
 import json
 import shutil
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -11,22 +10,12 @@ from typer.testing import CliRunner
 
 from ph_administrative_boundaries.build import (
     BuildPipeline,
-    EncoderConverter,
-    EncoderError,
     JsonCache,
-    MapshaperTransformer,
-    SubprocessTool,
+    SubprocessRunner,
 )
 from ph_administrative_boundaries.cli import app
 from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
 from ph_administrative_boundaries.manifest import ManifestError, YamlManifest
-from ph_administrative_boundaries.types import (
-    Artifact,
-    DatasetSpec,
-    ExternalTool,
-    GeometrySpec,
-    OutputSpec,
-)
 
 SOURCE = Path(__file__).resolve().parent / "fixtures" / "country" / "country.0.1.json"
 
@@ -35,66 +24,30 @@ requires_tools = pytest.mark.skipif(
     reason="mapshaper and tippecanoe must be installed",
 )
 
-MANIFEST = {
-    "datasets": {
-        "country": {
-            "source": "raw/source.geojson",
-            "geometry": {
-                "clean": True,
-                "precision": 0.00001,
-                "simplify": {
-                    "method": "visvalingam",
-                    "percent": 10,
-                    "keep_shapes": True,
-                },
-            },
-            "outputs": {
-                "pmtiles": {"layer": "country", "minzoom": 4, "maxzoom": 14},
-            },
-        }
-    }
-}
+STEPS = [
+    {
+        "run": "mapshaper -i {in} -clean -simplify visvalingam 10% keep-shapes "
+        "-o {out} precision=0.00001"
+    },
+    {
+        "run": "tippecanoe -o {out} -f -P --layer=country -Z4 -z14 {in}",
+        "out": "country.pmtiles",
+    },
+]
+MANIFEST = {"datasets": {"country": {"source": "raw/source.geojson", "steps": STEPS}}}
 
 
-class CountingTool:
-    """Delegates to a real external tool while recording every invocation."""
+class CountingRunner:
+    """Delegates to the real runner and records each tool invocation."""
 
-    def __init__(self, tool: ExternalTool) -> None:
-        self.name = tool.name
+    def __init__(self) -> None:
+        self.inner = SubprocessRunner()
         self.calls: list[list[str]] = []
-        self._tool = tool
 
-    def run(self, args: list[str]) -> None:
-        self.calls.append([*args])
-        self._tool.run(args)
-
-    def version(self) -> str:
-        return self._tool.version()
-
-
-@dataclass
-class Harness:
-    root: Path
-    mapshaper: CountingTool
-    tippecanoe: CountingTool
-
-    @property
-    def workspace(self) -> Path:
-        return self.root / ".cache" / "build"
-
-    @property
-    def output_dir(self) -> Path:
-        return self.root / "data" / "processed"
-
-    def pipeline(self, manifest: Path | None = None, **options: bool) -> BuildPipeline:
-        return BuildPipeline(
-            manifest=YamlManifest().load(manifest or self.root / "manifest.yml"),
-            ingestor=LocalDataIngestor(self.workspace),
-            transformer=MapshaperTransformer(self.mapshaper, self.workspace),
-            converter=EncoderConverter({"pmtiles": self.tippecanoe}, self.output_dir),
-            cache=JsonCache(self.workspace / "cache.json"),
-            **options,
-        )
+    def run(self, argv: list[str]) -> str:
+        if argv[1:] != ["--version"]:
+            self.calls.append([*argv])
+        return self.inner.run(argv)
 
 
 @pytest.fixture(scope="module")
@@ -117,26 +70,23 @@ def project(tmp_path: Path, source_slice: Path) -> Path:
     return tmp_path
 
 
-@pytest.fixture()
-def harness(project: Path) -> Harness:
-    return Harness(
-        root=project,
-        mapshaper=CountingTool(SubprocessTool("mapshaper")),
-        tippecanoe=CountingTool(SubprocessTool("tippecanoe")),
+def pipeline(root: Path, runner: object, manifest: Path | None = None) -> BuildPipeline:
+    workspace = root / ".cache" / "build"
+    return BuildPipeline(
+        manifest=YamlManifest().load(manifest or root / "manifest.yml"),
+        ingestor=LocalDataIngestor(workspace),
+        runner=runner,
+        cache=JsonCache(workspace / "cache.json"),
+        workspace=workspace,
+        output_dir=root / "data" / "processed",
     )
 
 
-def test_manifest_maps_yaml_onto_types(project: Path) -> None:
+def test_manifest_maps_steps(project: Path) -> None:
     spec = YamlManifest().load(project / "manifest.yml").get("country")
 
-    assert isinstance(spec, DatasetSpec)
-    assert spec.source == project / "data" / "raw" / "source.geojson"
-    assert spec.geometry == GeometrySpec(
-        clean=True, precision=0.00001, simplify_percent=10.0
-    )
-    assert spec.outputs == [
-        OutputSpec(format="pmtiles", layer="country", min_zoom=4, max_zoom=14)
-    ]
+    assert spec.sources == {"source": project / "data" / "raw" / "source.geojson"}
+    assert [step.out for step in spec.steps] == [None, "country.pmtiles"]
 
 
 def test_unknown_dataset_is_reported(project: Path) -> None:
@@ -149,84 +99,67 @@ def test_unknown_dataset_is_reported(project: Path) -> None:
 def test_ingest_hashes_the_declared_source(project: Path) -> None:
     spec = YamlManifest().load(project / "manifest.yml").get("country")
 
-    artifact = LocalDataIngestor().ingest(spec)
+    artifact = LocalDataIngestor().ingest(spec)["source"]
 
-    assert artifact.path == spec.source
-    assert artifact.sha256 == sha256_file(spec.source)
+    assert artifact.path == spec.sources["source"]
+    assert artifact.sha256 == sha256_file(spec.sources["source"])
 
 
-def test_unregistered_format_is_reported(project: Path) -> None:
-    converter = EncoderConverter({}, project / "build")
-    source = Artifact(project / "source.geojson", "0" * 64)
+def test_step_without_placeholders_is_rejected(project: Path) -> None:
+    config = {
+        "datasets": {
+            "country": {
+                "source": "raw/source.geojson",
+                "steps": [{"run": "mapshaper -o out.geojson", "out": "x.geojson"}],
+            }
+        }
+    }
+    (project / "manifest.yml").write_text(yaml.safe_dump(config))
 
-    with pytest.raises(EncoderError, match="mlt"):
-        converter.convert(source, OutputSpec("mlt", "country", 0, 0))
+    with pytest.raises(ManifestError, match="must use"):
+        YamlManifest().load(project / "manifest.yml")
 
 
 @requires_tools
-def test_build_writes_pmtiles_artifact(harness: Harness) -> None:
-    artifacts = harness.pipeline().build("country")
+def test_build_writes_pmtiles(project: Path) -> None:
+    artifacts = pipeline(project, CountingRunner()).build("country")
 
-    assert len(artifacts) == 1
     artifact = artifacts[0]
-    assert artifact.path == harness.output_dir / "country.pmtiles"
+    assert artifact.path == project / "data" / "processed" / "country.pmtiles"
     assert artifact.path.read_bytes()[:7] == b"PMTiles"
     assert artifact.sha256 == sha256_file(artifact.path)
-    assert harness.mapshaper.calls[0][0] == "-i"
-    zoom_args = [
-        arg
-        for arg in harness.tippecanoe.calls[0]
-        if arg.startswith(("-Z", "-z", "--layer"))
-    ]
-    assert zoom_args == ["--layer=country", "-Z4", "-z14"]
 
 
 @requires_tools
-def test_build_drops_normalized_intermediates(harness: Harness) -> None:
-    harness.pipeline().build("country")
+def test_rebuild_runs_no_tools(project: Path) -> None:
+    first = pipeline(project, CountingRunner()).build("country")
+    runner = CountingRunner()
 
-    assert not (harness.workspace / "normalized").exists()
-    assert (harness.output_dir / "country.pmtiles").is_file()
+    second = pipeline(project, runner).build("country")
 
-
-@requires_tools
-def test_keep_intermediates_preserves_normalized(harness: Harness) -> None:
-    harness.pipeline(keep_intermediates=True).build("country")
-
-    assert (harness.workspace / "normalized" / "country.geojson").is_file()
+    assert runner.calls == []
+    assert second[0].sha256 == first[0].sha256
 
 
 @requires_tools
-def test_rebuild_reuses_converted_artifacts(harness: Harness) -> None:
-    first = harness.pipeline().build("country")
-    second = harness.pipeline().build("country")
-
-    assert [artifact.sha256 for artifact in second] == [
-        artifact.sha256 for artifact in first
-    ]
-    assert len(harness.tippecanoe.calls) == 1
-    assert len(harness.mapshaper.calls) == 2
-
-
-@requires_tools
-def test_geometry_change_invalidates_converted_artifacts(harness: Harness) -> None:
-    first = harness.pipeline().build("country")
-
-    config = yaml.safe_load((harness.root / "manifest.yml").read_text())
-    config["datasets"]["country"]["geometry"]["precision"] = 0.001
-    changed = harness.root / "changed.yml"
+def test_changed_command_reruns_tippecanoe_only(project: Path) -> None:
+    pipeline(project, CountingRunner()).build("country")
+    config = yaml.safe_load((project / "manifest.yml").read_text())
+    config["datasets"]["country"]["steps"][1]["run"] = (
+        "tippecanoe -o {out} -f -P --layer=country -Z4 -z13 {in}"
+    )
+    changed = project / "changed.yml"
     changed.write_text(yaml.safe_dump(config))
+    runner = CountingRunner()
 
-    second = harness.pipeline(changed).build("country")
+    pipeline(project, runner, changed).build("country")
 
-    assert len(harness.tippecanoe.calls) == 2
-    assert second[0].sha256 != first[0].sha256
+    assert [call[0] for call in runner.calls] == ["tippecanoe"]
 
 
 def test_cli_reports_unknown_dataset(project: Path) -> None:
     result = CliRunner().invoke(
-        app,
-        ["build", "provinces", "--manifest", str(project / "manifest.yml")],
+        app, ["build", "provinces", "--manifest", str(project / "manifest.yml")]
     )
 
     assert result.exit_code == 1
@@ -234,31 +167,7 @@ def test_cli_reports_unknown_dataset(project: Path) -> None:
 
 
 @requires_tools
-def test_cli_build_writes_artifacts_to_data_processed(project: Path) -> None:
-    workspace = project / ".cache" / "build"
-
-    result = CliRunner().invoke(
-        app,
-        [
-            "build",
-            "country",
-            "--manifest",
-            str(project / "manifest.yml"),
-            "--workspace",
-            str(workspace),
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert (project / "data" / "processed" / "country.pmtiles").is_file()
-    assert not (workspace / "dist").exists()
-    assert "data/processed/country.pmtiles" in result.output
-
-
-@requires_tools
-def test_cli_output_dir_override(project: Path) -> None:
-    destination = project / "tiles"
-
+def test_cli_build_writes_to_data_processed(project: Path) -> None:
     result = CliRunner().invoke(
         app,
         [
@@ -268,10 +177,8 @@ def test_cli_output_dir_override(project: Path) -> None:
             str(project / "manifest.yml"),
             "--workspace",
             str(project / ".cache" / "build"),
-            "--output-dir",
-            str(destination),
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert (destination / "country.pmtiles").is_file()
+    assert (project / "data" / "processed" / "country.pmtiles").is_file()

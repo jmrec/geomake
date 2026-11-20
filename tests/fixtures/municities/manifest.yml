@@ -1,12 +1,7 @@
 datasets:
   municities:
     source: raw/municities/*.json
-    geometry:
-      clean: true
-      precision: 0.00001
-      simplify:
-        method: visvalingam
-        percent: 10
-        keep_shapes: true
-    outputs:
-      pmtiles: { layer: municities, minzoom: 4, maxzoom: 14 }
+    steps:
+      - run: mapshaper -i {in} -clean -simplify visvalingam 10% keep-shapes -o {out} precision=0.00001
+      - run: tippecanoe -o {out} -f -P --layer=municities -Z4 -z14 {in}
+        out: municities.pmtiles
