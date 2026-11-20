@@ -24,6 +24,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mkdocs-ultralytics-plugin>=0.2.6",
     "zensical>=0.1.2",
 ]
 
