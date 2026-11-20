@@ -1,1 +1,1 @@
-# Philippine Administrative Boundaries — Vector Tile Server
+# Philippine Administrative Boundaries
