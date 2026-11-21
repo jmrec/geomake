@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN npm install -g mapshaper
 
+ARG DUCKDB_VERSION=2.0.1
+RUN arch="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb-cli-linux-${arch}.tar.gz" \
+    | tar -xz -C /usr/local/bin duckdb
+
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
