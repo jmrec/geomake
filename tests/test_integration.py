@@ -35,7 +35,9 @@ STEPS = [
         "out": "country.pmtiles",
     },
 ]
-MANIFEST = {"datasets": {"country": {"source": "raw/source.geojson", "steps": STEPS}}}
+MANIFEST = {
+    "datasets": {"country": {"source": "data/raw/source.geojson", "steps": STEPS}}
+}
 
 
 class CountingRunner:
@@ -110,7 +112,7 @@ def test_step_without_placeholders_is_rejected(project: Path) -> None:
     config = {
         "datasets": {
             "country": {
-                "source": "raw/source.geojson",
+                "source": "data/raw/source.geojson",
                 "steps": [{"run": "mapshaper -o out.geojson", "out": "x.geojson"}],
             }
         }

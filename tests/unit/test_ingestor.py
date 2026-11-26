@@ -1,7 +1,7 @@
 """Unit tests for `LocalDataIngestor`.
 
 `tests/fixtures/municities` is a miniature project mirroring the `municities`
-dataset in `manifest.yml`, whose source is a glob (`raw/municities/*.json`).
+dataset in `manifest.yml`, whose source is a glob (`data/raw/municities/*.json`).
 """
 
 import json
@@ -103,7 +103,7 @@ def test_glob_merge_is_deterministic(
 def test_ingestor_reports_glob_matching_nothing(
     project: Path, ingestor: LocalDataIngestor
 ) -> None:
-    spec = declare(project, "raw/municities/*.geojson")
+    spec = declare(project, "data/raw/municities/*.geojson")
 
     with pytest.raises(FileNotFoundError, match="matched no files"):
         ingestor.ingest(spec)
@@ -112,12 +112,12 @@ def test_ingestor_reports_glob_matching_nothing(
 def test_ingestor_passes_a_single_source_through(
     project: Path, ingestor: LocalDataIngestor, workspace: Path
 ) -> None:
-    source = "raw/municities/bgysubmuns-municity-1001301000.0.1.json"
+    source = "data/raw/municities/bgysubmuns-municity-1001301000.0.1.json"
     spec = declare(project, source)
 
     artifact = ingestor.ingest(spec)["source"]
 
-    assert artifact.path == project / "data" / source
+    assert artifact.path == project / source
     assert artifact.sha256 == sha256_file(artifact.path)
     assert not (workspace / "raw").exists()
 
@@ -125,7 +125,7 @@ def test_ingestor_passes_a_single_source_through(
 def test_ingestor_reports_a_missing_source(
     project: Path, ingestor: LocalDataIngestor
 ) -> None:
-    spec = declare(project, "raw/missing.geojson")
+    spec = declare(project, "data/raw/missing.geojson")
 
     with pytest.raises(FileNotFoundError, match="is missing"):
         ingestor.ingest(spec)

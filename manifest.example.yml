@@ -1,9 +1,10 @@
 datasets:
   country:
-    # Sources are read from `data/`. A mapping names each file so steps can read it.
+    # Relative paths start at this file's folder; absolute paths work too.
+    # A mapping names each file so steps can read it.
     source:
-      barangays: raw/country.0.1.json
-      roads: raw/roads.json
+      barangays: data/raw/country.0.1.json
+      roads: data/raw/roads.json
 
     steps:
       # `id` names this step's output so later steps can read it.
@@ -30,6 +31,6 @@ datasets:
           {roads}
 
       # {in} is the previous step's output. This step reads two named steps instead.
-      # The last step sets `out`: the final file, written to data/processed/.
+      # The last step sets `out`: the final file, written to data/processed/ unless you pass --output-dir.
       - run: tile-join -o {out} -f {brgy_tiles} {road_tiles}
         out: country.pmtiles

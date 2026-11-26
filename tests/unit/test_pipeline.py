@@ -60,7 +60,9 @@ def write_config(root: Path, datasets: dict) -> None:
     (root / "manifest.yml").write_text(yaml.safe_dump({"datasets": datasets}))
 
 
-def write_country(root: Path, source: str = "raw/country.json", steps=None) -> None:
+def write_country(
+    root: Path, source: str = "data/raw/country.json", steps=None
+) -> None:
     write_config(
         root,
         {
@@ -199,7 +201,7 @@ def test_glob_merge_is_removed_unless_kept(root: Path, runner: FakeRunner) -> No
     country = root / "data" / "raw" / "country"
     country.mkdir()
     (country / "a.json").write_text('{"features": []}')
-    write_country(root, source="raw/country/*.json")
+    write_country(root, source="data/raw/country/*.json")
     merged = root / ".cache" / "build" / "raw" / "country" / "source.geojson"
 
     make_pipeline(root, runner).build("country")
@@ -246,8 +248,8 @@ def test_two_datasets_cannot_write_the_same_file(root: Path) -> None:
     write_config(
         root,
         {
-            "country": {"source": "raw/country.json", "steps": DEFAULT_STEPS},
-            "regions": {"source": "raw/country.json", "steps": DEFAULT_STEPS},
+            "country": {"source": "data/raw/country.json", "steps": DEFAULT_STEPS},
+            "regions": {"source": "data/raw/country.json", "steps": DEFAULT_STEPS},
         },
     )
 
@@ -274,7 +276,7 @@ def test_any_command_works_even_without_a_version_flag(
     assert runner.count("mlt") == 1
 
 
-BRANCH_SOURCES = {"barangays": "raw/country.json", "roads": "raw/roads.json"}
+BRANCH_SOURCES = {"barangays": "data/raw/country.json", "roads": "data/raw/roads.json"}
 BRANCHED = [
     {"id": "brgy", "run": "mapshaper -i {barangays} -clean -o {out}"},
     {"id": "brgy_tiles", "run": "tippecanoe -o {out} -f --layer=barangays {brgy}"},
@@ -322,12 +324,12 @@ def test_a_change_to_one_branch_leaves_the_other_cached(
     ("sources", "steps", "message"),
     [
         (
-            {"source": "raw/country.json"},
+            {"source": "data/raw/country.json"},
             [{"run": "tool {nope} -o {out}", "out": "x.pmtiles"}],
             "unknown name '{nope}'",
         ),
         (
-            {"source": "raw/country.json"},
+            {"source": "data/raw/country.json"},
             [
                 {"id": "first", "run": "tool {second} -o {out}"},
                 {"id": "second", "run": "tool {in} -o {out}", "out": "x.pmtiles"},
@@ -340,7 +342,7 @@ def test_a_change_to_one_branch_leaves_the_other_cached(
             "several sources",
         ),
         (
-            {"source": "raw/country.json"},
+            {"source": "data/raw/country.json"},
             [
                 {"id": "a", "run": "tool {in} -o {out}"},
                 {"id": "a", "run": "tool {in} -o {out}", "out": "x.pmtiles"},
@@ -356,7 +358,7 @@ def test_a_change_to_one_branch_leaves_the_other_cached(
             "plain identifier",
         ),
         (
-            {"source": "raw/country.json"},
+            {"source": "data/raw/country.json"},
             [{"run": "tool -o {out}", "out": "x.pmtiles"}],
             "must read {in}",
         ),
@@ -412,12 +414,16 @@ def test_logs_command_for_steps_that_run(
     ("block", "message"),
     [
         (
-            {"source": "raw/country.json", "steps": DEFAULT_STEPS, "attributon": "x"},
+            {
+                "source": "data/raw/country.json",
+                "steps": DEFAULT_STEPS,
+                "attributon": "x",
+            },
             "country.attributon: Extra inputs are not permitted",
         ),
         (
             {
-                "source": "raw/country.json",
+                "source": "data/raw/country.json",
                 "steps": [{"run": "tool {in} -o {out}", "ouT": "x.pmtiles"}],
             },
             "country.steps.0.ouT: Extra inputs are not permitted",

@@ -1,4 +1,4 @@
-"""Load `manifest.yml` into `DatasetSpec`s, validating every step."""
+"""Load a manifest file into `DatasetSpec`s, validating every step."""
 
 import re
 import shlex
@@ -54,7 +54,7 @@ def _describe(path: Path, exc: ValidationError) -> str:
 
 
 def _dataset(name: str, block: DatasetModel, root: Path) -> DatasetSpec:
-    sources = _sources(block.source, root / "data")
+    sources = _sources(block.source, root)
     return DatasetSpec(
         name=name,
         attribution=block.attribution,
@@ -63,19 +63,15 @@ def _dataset(name: str, block: DatasetModel, root: Path) -> DatasetSpec:
     )
 
 
-def _sources(block: str | dict[str, str], data_root: Path) -> dict[str, Path]:
+def _sources(block: str | dict[str, str], root: Path) -> dict[str, Path]:
     entries = {"source": block} if isinstance(block, str) else block
-    return {key: _resolve_source(data_root, value) for key, value in entries.items()}
+    return {key: _resolve_source(root, value) for key, value in entries.items()}
 
 
-def _resolve_source(data_root: Path, source: str) -> Path:
-    declared = Path(source)
-    if declared.is_absolute():
-        return declared
-    # Sources are read from `<manifest dir>/data` unless the declared path already
-    # resolves from the manifest directory (e.g. `data/raw/boundaries.geojson`).
-    unscoped = data_root.parent / declared
-    return unscoped if unscoped.exists() else data_root / declared
+def _resolve_source(root: Path, source: str) -> Path:
+    """Absolute paths are used as given; relative ones start at the manifest's folder."""
+    declared = Path(source).expanduser()
+    return declared if declared.is_absolute() else root / declared
 
 
 def _steps(

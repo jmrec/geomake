@@ -1,11 +1,11 @@
 datasets:
   boundaries:
     source:
-      country: raw/Country/PH_Adm0_Country.shp
-      regions: raw/Regions/PH_Adm1_Regions.shp
-      provdists: raw/ProvDists/PH_Adm2_ProvDists.shp
-      municities: raw/MuniCities/PH_Adm3_MuniCities.shp
-      bgysubmuns: raw/BgySubMuns/PH_Adm4_BgySubMuns.shp
+      country: data/raw/Country/PH_Adm0_Country.shp
+      regions: data/raw/Regions/PH_Adm1_Regions.shp
+      provdists: data/raw/ProvDists/PH_Adm2_ProvDists.shp
+      municities: data/raw/MuniCities/PH_Adm3_MuniCities.shp
+      bgysubmuns: data/raw/BgySubMuns/PH_Adm4_BgySubMuns.shp
 
     steps:
       - id: country_geo
@@ -81,7 +81,7 @@ datasets:
         out: PH_Adm_Boundaries.pmtiles
 
   bgysubmuns_parquet:
-    source: raw/BgySubMuns/PH_Adm4_BgySubMuns.shp
+    source: data/raw/BgySubMuns/PH_Adm4_BgySubMuns.shp
 
     steps:
       - id: bgysubmuns_geo
