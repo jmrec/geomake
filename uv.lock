@@ -39,6 +39,37 @@ wheels = [
 ]
 
 [[package]]
+name = "geomake"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pytest" },
+    { name = "pyyaml" },
+    { name = "ruff" },
+    { name = "structlog" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "zensical" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.14.4" },
+    { name = "pytest", specifier = ">=9.2.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.17.5" },
+    { name = "structlog", specifier = ">=26.1.0" },
+    { name = "typer", specifier = ">=0.29.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "zensical", specifier = ">=0.1.2" }]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -219,37 +250,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
 ]
-
-[[package]]
-name = "ph-administrative-boundaries"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pytest" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-    { name = "structlog" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "zensical" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.14.4" },
-    { name = "pytest", specifier = ">=9.2.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruff", specifier = ">=0.17.5" },
-    { name = "structlog", specifier = ">=26.1.0" },
-    { name = "typer", specifier = ">=0.29.2" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "zensical", specifier = ">=0.1.2" }]
 
 [[package]]
 name = "pluggy"

@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
-from ph_administrative_boundaries.manifest import YamlManifest
-from ph_administrative_boundaries.types import DatasetSpec
+from geomake.ingest import LocalDataIngestor, sha256_file
+from geomake.manifest import YamlManifest
+from geomake.types import DatasetSpec
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "municities"
 

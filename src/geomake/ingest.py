@@ -5,7 +5,7 @@ from glob import glob, has_magic
 from pathlib import Path
 from typing import Any
 
-from ph_administrative_boundaries.types import Artifact, DatasetSpec
+from geomake.types import Artifact, DatasetSpec
 
 _CHUNK_SIZE = 1 << 20
 

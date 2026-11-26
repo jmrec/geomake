@@ -4,23 +4,25 @@ from typing import Annotated
 import structlog
 import typer
 
-from ph_administrative_boundaries.build import (
+from geomake.build import (
     BuildPipeline,
     JsonCache,
     StepError,
     SubprocessRunner,
     ToolError,
 )
-from ph_administrative_boundaries.ingest import LocalDataIngestor
-from ph_administrative_boundaries.logs import LogFormat, configure_logging
-from ph_administrative_boundaries.manifest import ManifestError, YamlManifest
+from geomake.ingest import LocalDataIngestor
+from geomake.logs import LogFormat, configure_logging
+from geomake.manifest import ManifestError, YamlManifest
 
-app = typer.Typer(help="Build vector tiles of Philippine administrative boundaries.")
+app = typer.Typer(
+    help="Build geospatial datasets from a manifest of cached, ordered CLI steps."
+)
 
 
 @app.callback()
 def main() -> None:
-    """Build vector tiles of Philippine administrative boundaries."""
+    """Build geospatial datasets from a manifest of cached, ordered CLI steps."""
 
 
 @app.command()

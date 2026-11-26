@@ -1,7 +1,7 @@
 [project]
-name = "ph-administrative-boundaries"
+name = "geomake"
 version = "0.1.0"
-description = "Add your description here"
+description = "Build geospatial datasets from a manifest of cached, ordered CLI steps."
 readme = "README.md"
 authors = [
     { name = "Juan Miguel Recondo", email = "134484809+jmrec@users.noreply.github.com" }
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cli = "ph_administrative_boundaries.cli:app"
+geomake = "geomake.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]

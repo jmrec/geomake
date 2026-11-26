@@ -16,9 +16,9 @@ from typing import Protocol
 
 import structlog
 
-from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
-from ph_administrative_boundaries.manifest import PLACEHOLDER, YamlManifest
-from ph_administrative_boundaries.types import Artifact, DatasetSpec, Step
+from geomake.ingest import LocalDataIngestor, sha256_file
+from geomake.manifest import PLACEHOLDER, YamlManifest
+from geomake.types import Artifact, DatasetSpec, Step
 
 log = structlog.get_logger()
 

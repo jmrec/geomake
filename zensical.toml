@@ -1,6 +1,6 @@
 [project]
 site_url = "https://ph-boundaries-docs.jmrecondo.com"
-site_name = "PH Administrative Boundaries"
+site_name = "Geomake"
 site_description = "A utility project for manipulation and conversion of GeoJSON into PMTiles and MapLibre Tiles (MLT)"
 site_author = "Juan Miguel Recondo"
 

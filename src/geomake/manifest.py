@@ -8,8 +8,8 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from ph_administrative_boundaries.schema import DatasetModel, ManifestModel, StepModel
-from ph_administrative_boundaries.types import DatasetSpec, Step
+from geomake.schema import DatasetModel, ManifestModel, StepModel
+from geomake.types import DatasetSpec, Step
 
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 

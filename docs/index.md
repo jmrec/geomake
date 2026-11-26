@@ -58,7 +58,7 @@ icon: lucide/rocket
 [manifest.yml](/schema) declares each dataset's source and its ordered steps:
 
 ```bash
-uv run cli build <dataset>
+uv run geomake build <dataset>
 ```
 
 Finished tiles are written to `data/processed/` (override with `--output-dir`). Each step's output is cached, so rebuilding only reruns steps whose input, command, or tool version changed.

@@ -8,15 +8,15 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from ph_administrative_boundaries.build import (
+from geomake.build import (
     BuildPipeline,
     JsonCache,
     Runner,
     SubprocessRunner,
 )
-from ph_administrative_boundaries.cli import app
-from ph_administrative_boundaries.ingest import LocalDataIngestor, sha256_file
-from ph_administrative_boundaries.manifest import ManifestError, YamlManifest
+from geomake.cli import app
+from geomake.ingest import LocalDataIngestor, sha256_file
+from geomake.manifest import ManifestError, YamlManifest
 
 SOURCE = Path(__file__).resolve().parent / "fixtures" / "country" / "country.0.1.json"
 
