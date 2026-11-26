@@ -4,16 +4,10 @@ from typing import Annotated
 import structlog
 import typer
 
-from geomake.build import (
-    BuildPipeline,
-    JsonCache,
-    StepError,
-    SubprocessRunner,
-    ToolError,
-)
-from geomake.ingest import LocalDataIngestor
+from geomake.api import build as api_build
+from geomake.build import StepError, ToolError
 from geomake.logs import LogFormat, configure_logging
-from geomake.manifest import ManifestError, YamlManifest
+from geomake.manifest import ManifestError
 
 app = typer.Typer(
     help="Build geospatial datasets from a manifest of cached, ordered CLI steps."
@@ -70,20 +64,15 @@ def build(
 ) -> None:
     """Run every step declared for a dataset, in order."""
     configure_logging(log_format, quiet=quiet)
-    workspace.mkdir(parents=True, exist_ok=True)
-    destination = output_dir or manifest.parent / "data" / "processed"
     try:
-        pipeline = BuildPipeline(
-            manifest=YamlManifest().load(manifest),
-            ingestor=LocalDataIngestor(workspace),
-            runner=SubprocessRunner(),
-            cache=JsonCache(workspace / "cache.json"),
+        artifacts = api_build(
+            name,
+            manifest,
+            output_dir=output_dir,
             workspace=workspace,
-            output_dir=destination,
             keep_intermediates=keep_intermediates,
             stream=not quiet,
         )
-        artifacts = pipeline.build(name)
     except (ManifestError, ToolError, StepError, FileNotFoundError) as exc:
         structlog.get_logger().error("build_failed", dataset=name, error=str(exc))
         raise typer.Exit(1) from exc

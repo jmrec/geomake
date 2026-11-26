@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from ph-administrative-boundaries!")
+from geomake.api import build
+
+__all__ = ["build"]
