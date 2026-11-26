@@ -1,6 +1,6 @@
 [project]
 name = "geomake"
-version = "0.0.0"
+version = "0.1.0"
 description = "Build geospatial datasets from a manifest of cached, ordered CLI steps."
 readme = "README.md"
 license = "MIT"
