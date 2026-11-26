@@ -21,9 +21,18 @@ def main() -> None:
 
 @app.command()
 def build(
-    name: Annotated[str, typer.Argument(help="Dataset name declared in the manifest")],
+    names: Annotated[
+        list[str],
+        typer.Argument(
+            metavar="DATASET",
+            help="One or more dataset names declared in the manifest",
+        ),
+    ],
     manifest: Annotated[
-        Path, typer.Option("--manifest", "-m", help="Path to the dataset manifest")
+        Path,
+        typer.Option(
+            "--manifest", "-m", help="Manifest file to read; any .yml or .yaml path"
+        ),
     ] = Path("manifest.yml"),
     output_dir: Annotated[
         Path | None,
@@ -62,19 +71,19 @@ def build(
         ),
     ] = False,
 ) -> None:
-    """Run every step declared for a dataset, in order."""
+    """Run every step declared for each dataset, in order."""
     configure_logging(log_format, quiet=quiet)
     try:
         artifacts = api_build(
-            name,
-            manifest,
+            *names,
+            manifest=manifest,
             output_dir=output_dir,
             workspace=workspace,
             keep_intermediates=keep_intermediates,
             stream=not quiet,
         )
     except (ManifestError, ToolError, StepError, FileNotFoundError) as exc:
-        structlog.get_logger().error("build_failed", dataset=name, error=str(exc))
+        structlog.get_logger().error("build_failed", datasets=names, error=str(exc))
         raise typer.Exit(1) from exc
     for artifact in artifacts:
         typer.echo(f"{artifact.path}  {artifact.sha256}")
