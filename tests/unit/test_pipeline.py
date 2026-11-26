@@ -232,7 +232,7 @@ def test_render_keeps_a_spaced_path_as_one_argument() -> None:
         ([{"run": 'tool "{in} -o {out}', "out": "x.pmtiles"}], "is malformed"),
         ([{"run": MAPSHAPER}], "must set 'out'"),
         ([{"run": TIPPECANOE, "out": "sub/x.pmtiles"}], "plain file name"),
-        ([], "non-empty 'steps' list"),
+        ([], "at least 1 item"),
     ],
 )
 def test_invalid_steps_are_rejected(root: Path, steps: list, message: str) -> None:
@@ -406,3 +406,37 @@ def test_logs_command_for_steps_that_run(
     ]
     assert started[0]["command"].startswith("mapshaper ")
     assert [e["event"] for e in logs][-1] == "build_finished"
+
+
+@pytest.mark.parametrize(
+    ("block", "message"),
+    [
+        (
+            {"source": "raw/country.json", "steps": DEFAULT_STEPS, "attributon": "x"},
+            "country.attributon: Extra inputs are not permitted",
+        ),
+        (
+            {
+                "source": "raw/country.json",
+                "steps": [{"run": "tool {in} -o {out}", "ouT": "x.pmtiles"}],
+            },
+            "country.steps.0.ouT: Extra inputs are not permitted",
+        ),
+    ],
+)
+def test_unknown_keys_are_rejected(root: Path, block: dict, message: str) -> None:
+    write_config(root, {"country": block})
+
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        YamlManifest().load(root / "manifest.yml")
+
+
+def test_all_schema_problems_are_reported_together(root: Path) -> None:
+    write_config(root, {"a": {"steps": []}, "b": {"source": 3, "steps": DEFAULT_STEPS}})
+
+    with pytest.raises(ManifestError) as caught:
+        YamlManifest().load(root / "manifest.yml")
+
+    assert "a.source" in str(caught.value)
+    assert "a.steps" in str(caught.value)
+    assert "b.source" in str(caught.value)

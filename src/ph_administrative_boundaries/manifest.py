@@ -4,15 +4,14 @@ import re
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
+from ph_administrative_boundaries.schema import DatasetModel, ManifestModel, StepModel
 from ph_administrative_boundaries.types import DatasetSpec, Step
 
-NAME = re.compile(r"[A-Za-z_]\w*")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
-RESERVED = frozenset({"in", "out"})
 
 
 class ManifestError(ValueError):
@@ -26,12 +25,13 @@ class YamlManifest:
     def load(self, path: Path) -> "YamlManifest":
         manifest_path = Path(path)
         config = yaml.safe_load(manifest_path.read_text()) or {}
-        blocks = config.get("datasets") or {}
-        if not isinstance(blocks, dict):
-            raise ManifestError(f"{manifest_path}: 'datasets' must be a mapping")
+        try:
+            model = ManifestModel.model_validate(config)
+        except ValidationError as exc:
+            raise ManifestError(_describe(manifest_path, exc)) from None
         self.datasets = {
             name: _dataset(name, block, manifest_path.parent)
-            for name, block in blocks.items()
+            for name, block in model.datasets.items()
         }
         _check_unique_outputs(self.datasets)
         return self
@@ -44,40 +44,28 @@ class YamlManifest:
             raise ManifestError(f"unknown dataset '{name}' (known: {known})") from None
 
 
-def _dataset(name: str, block: Any, root: Path) -> DatasetSpec:
-    if not isinstance(block, dict):
-        raise ManifestError(f"dataset '{name}' must be a mapping")
-    if "source" not in block:
-        raise ManifestError(f"dataset '{name}' is missing 'source'")
-    sources = _sources(name, block["source"], root / "data")
+def _describe(path: Path, exc: ValidationError) -> str:
+    """One line (log renderers escape newlines), each problem with its key path."""
+    problems = []
+    for error in exc.errors():
+        where = ".".join(str(part) for part in error["loc"]) or "<root>"
+        problems.append(f"{where}: {error['msg'].removeprefix('Value error, ')}")
+    return f"{path}: invalid manifest: " + "; ".join(problems)
+
+
+def _dataset(name: str, block: DatasetModel, root: Path) -> DatasetSpec:
+    sources = _sources(block.source, root / "data")
     return DatasetSpec(
         name=name,
-        attribution=str(block.get("attribution", "")),
+        attribution=block.attribution,
         sources=sources,
-        steps=_steps(name, block.get("steps"), sources),
+        steps=_steps(name, block.steps, sources),
     )
 
 
-def _sources(name: str, block: Any, data_root: Path) -> dict[str, Path]:
-    if isinstance(block, str):
-        entries: dict[Any, Any] = {"source": block}
-    elif isinstance(block, dict) and block:
-        entries = block
-    else:
-        raise ManifestError(
-            f"dataset '{name}': 'source' must be a path or a mapping of names to paths"
-        )
-    resolved: dict[str, Path] = {}
-    for key, value in entries.items():
-        if not isinstance(key, str) or not NAME.fullmatch(key) or key in RESERVED:
-            raise ManifestError(
-                f"dataset '{name}': source name {key!r} must be a plain identifier, "
-                "not 'in' or 'out'"
-            )
-        if not isinstance(value, str) or not value:
-            raise ManifestError(f"dataset '{name}': source '{key}' must be a path")
-        resolved[key] = _resolve_source(data_root, value)
-    return resolved
+def _sources(block: str | dict[str, str], data_root: Path) -> dict[str, Path]:
+    entries = {"source": block} if isinstance(block, str) else block
+    return {key: _resolve_source(data_root, value) for key, value in entries.items()}
 
 
 def _resolve_source(data_root: Path, source: str) -> Path:
@@ -90,25 +78,21 @@ def _resolve_source(data_root: Path, source: str) -> Path:
     return unscoped if unscoped.exists() else data_root / declared
 
 
-def _steps(name: str, block: Any, sources: dict[str, Path]) -> tuple[Step, ...]:
-    if not isinstance(block, list) or not block:
-        raise ManifestError(f"dataset '{name}' needs a non-empty 'steps' list")
+def _steps(
+    name: str, block: list[StepModel], sources: dict[str, Path]
+) -> tuple[Step, ...]:
     readable = set(sources)  # names a step may read: sources, then earlier step ids
     ids: set[str] = set()
     written: dict[str, int] = {}  # intermediate file name -> step number
     steps: list[Step] = []
     for number, item in enumerate(block, start=1):
-        if not isinstance(item, dict) or not isinstance(item.get("run"), str):
-            raise ManifestError(f"dataset '{name}': step {number} needs a 'run' string")
-        run = item["run"].strip()
+        run = item.run
         try:
-            tokens = shlex.split(run)
+            shlex.split(run)
         except ValueError as exc:
             raise ManifestError(
                 f"dataset '{name}': step {number} is malformed: {exc}"
             ) from None
-        if not tokens:
-            raise ManifestError(f"dataset '{name}': step {number} is empty")
 
         refs = set(PLACEHOLDER.findall(run))
         if "out" not in refs:
@@ -130,33 +114,20 @@ def _steps(name: str, block: Any, sources: dict[str, Path]) -> tuple[Step, ...]:
                     f"dataset '{name}': step {number} uses unknown name '{{{ref}}}'"
                 )
 
-        step_id = item.get("id")
+        step_id = item.id
         if step_id is not None:
-            if (
-                not isinstance(step_id, str)
-                or not NAME.fullmatch(step_id)
-                or step_id in RESERVED
-                or step_id in sources
-            ):
+            if step_id in sources:
                 raise ManifestError(
                     f"dataset '{name}': step {number} 'id' must be a plain identifier "
-                    "that is not 'in', 'out' or a source name"
+                    f"that is not a source name ('{step_id}')"
                 )
             if step_id in ids:
                 raise ManifestError(
                     f"dataset '{name}': step id '{step_id}' is used twice"
                 )
 
-        out = item.get("out")
+        out = item.out
         last = number == len(block)
-        if out is None and last:
-            raise ManifestError(
-                f"dataset '{name}': the last step must set 'out' (the final file name)"
-            )
-        if out is not None and (not isinstance(out, str) or not out or "/" in out):
-            raise ManifestError(
-                f"dataset '{name}': step {number} 'out' must be a plain file name"
-            )
         if not last:
             file_name = out or (
                 f"{step_id}.geojson" if step_id else f"step{number}.geojson"
