@@ -1,14 +1,16 @@
 ---
 icon: lucide/file-json
+description: "How a manifest declares datasets: their sources, and the ordered command-line steps that build them."
 ---
 
-The schema found in `manifest.yml` configures how the app processes your data. Each dataset is a list of steps, and each step is a plain command.
+The schema found in your manifest file (`manifest.yml` by default) configures how the app processes your data. Each dataset is a list of steps, and each step is a plain command.
 
 ```yaml
 datasets:
   country:
-    # Source reads inside `data/`. A glob merges all matches first.
-    source: raw/country.0.1.json
+    # Relative paths start at the manifest's folder; absolute paths work too.
+    # A glob merges all matches first.
+    source: data/raw/country.0.1.json
 
     steps:
       - run: >
@@ -29,8 +31,8 @@ datasets:
 
 ```yaml
 source:
-  barangays: raw/barangays/*.json
-  roads: raw/roads.json
+  barangays: data/raw/barangays/*.json
+  roads: data/raw/roads.json
 ```
 
 ## Steps
@@ -40,7 +42,7 @@ source:
 - `{in}` is replaced by the previous step's output. On the first step it is the source, which must be the only one if the dataset has several.
 - `{name}` is replaced by a source name, or by the output of an earlier step with that `id`.
 - `id` names this step's output so later steps can read it. Steps can only read earlier steps and sources.
-- `out` names the file. The last step must set it, and it is written to `data/processed/`. Other steps may set it too; their files stay in `.cache/build/steps/<dataset>/`.
+- `out` names the file. The last step must set it, and it is written to `data/processed/` unless you choose another folder with `--output-dir`. Other steps may set it too; their files stay in `.cache/build/steps/<dataset>/`.
 
 Steps that don't depend on each other form branches. A step that reads several names merges them, as in this example:
 

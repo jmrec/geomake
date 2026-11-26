@@ -1,20 +1,21 @@
 [project]
-site_url = "https://ph-boundaries-docs.jmrecondo.com"
+site_url = "https://docs.jmrecondo.com/geomake/"
 site_name = "Geomake"
 site_description = "A utility project for manipulation and conversion of GeoJSON into PMTiles and MapLibre Tiles (MLT)"
 site_author = "Juan Miguel Recondo"
 
 # copyright = "Copyright &copy; 2026 Your name"
 
-repo_url = "https://github.com/jmrec/ph-administrative-boundaries"
-repo_name = "jmrec/ph-administrative-boundaries"
+repo_url = "https://github.com/jmrec/geomake"
+repo_name = "jmrec/geomake"
 edit_uri = "edit/main/docs/"
 
 nav = [
   { "Get started" = "index.md" },
+  { "About" = "about.md" },
   { "Manifest Schema" = "schema.md" },
   { "Diagrams" = "diagrams.md" },
-  { "Martin Tile Server" = "martin.md" },
+  # { "Martin Tile Server" = "martin.md" },
 ]
 
 # extra_css = ["stylesheets/extra.css"]
@@ -108,9 +109,9 @@ markdown_description = "Utilities for converting Philippine administrative bound
 [project.plugins.llmstxt.sections]
 "Documentation" = [
   { "index.md" = "Getting started" },
+  { "about.md" = "Why Geomake exists and why not a Justfile" },
   { "schema.md" = "manifest.yml schema and dataset processing steps" },
   { "diagrams.md" = "Build sequence and pipeline diagrams" },
-  { "martin.md" = "Martin vector tile server (legacy / migration in process)" },
 ]
 
 [project.markdown_extensions]
