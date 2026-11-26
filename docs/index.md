@@ -1,5 +1,6 @@
 ---
 icon: lucide/rocket
+description: "Install the library and build PMTiles and MapLibre Tiles (MLT) from Philippine administrative boundary GeoJSON, from Python or the command line."
 ---
 
 # Get started

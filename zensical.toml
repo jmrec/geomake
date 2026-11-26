@@ -88,6 +88,31 @@ link = "https://github.com/jmrec/"
 # icon = "fontawesome/brands/mastodon"
 # link = "https://fosstodon.org/@user"
 
+[project.plugins.glightbox]
+auto_caption = true
+
+[project.plugins.git-revision-date-localized]
+type = "date"
+enable_creation_date = true
+
+[project.plugins.meta-descriptions]
+enable_checks = true
+
+[project.plugins.minify]
+minify_html = true
+minify_css = true
+
+[project.plugins.llmstxt]
+markdown_description = "Utilities for converting Philippine administrative boundary GeoJSON into PMTiles and MapLibre Tiles (MLT), plus a Martin tile server setup."
+
+[project.plugins.llmstxt.sections]
+"Documentation" = [
+  { "index.md" = "Getting started" },
+  { "schema.md" = "manifest.yml schema and dataset processing steps" },
+  { "diagrams.md" = "Build sequence and pipeline diagrams" },
+  { "martin.md" = "Martin vector tile server (legacy / migration in process)" },
+]
+
 [project.markdown_extensions]
 abbr = {}
 admonition = {}

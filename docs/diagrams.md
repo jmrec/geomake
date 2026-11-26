@@ -1,5 +1,6 @@
 ---
 icon: lucide/workflow
+description: "Sequence diagram of the build pipeline that turns boundary GeoJSON into PMTiles and MapLibre Tiles."
 ---
 
 ## Build sequence
