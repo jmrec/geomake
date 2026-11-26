@@ -4,7 +4,26 @@ version = "0.0.0"
 description = "Build geospatial datasets from a manifest of cached, ordered CLI steps."
 readme = "README.md"
 license = "MIT"
-keywords = ["geospatial", "geojson", "pmtiles", "vector-tiles", "build", "cli"]
+keywords = [
+    "geospatial",
+    "gis",
+    "geojson",
+    "pmtiles",
+    "vector-tiles",
+    "maplibre",
+    "tippecanoe",
+    "mapshaper",
+    "data-pipeline",
+    "manifest",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Software Development :: Build Tools",
+]
 authors = [
     { name = "Juan Miguel Recondo", email = "134484809+jmrec@users.noreply.github.com" }
 ]
