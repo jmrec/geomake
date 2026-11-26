@@ -1,8 +1,10 @@
 [project]
 name = "geomake"
-version = "0.1.0"
+version = "0.0.0"
 description = "Build geospatial datasets from a manifest of cached, ordered CLI steps."
 readme = "README.md"
+license = "MIT"
+keywords = ["geospatial", "geojson", "pmtiles", "vector-tiles", "build", "cli"]
 authors = [
     { name = "Juan Miguel Recondo", email = "134484809+jmrec@users.noreply.github.com" }
 ]
@@ -14,6 +16,11 @@ dependencies = [
     "pydantic>=2.14.4",
 ]
 
+[project.urls]
+Documentation = "https://docs.jmrecondo.com/geomake/"
+Repository = "https://github.com/jmrec/geomake"
+Changelog = "https://github.com/jmrec/geomake/blob/main/CHANGELOG.md"
+
 [project.scripts]
 geomake = "geomake.cli:app"
 
@@ -23,6 +30,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "commitizen>=4.20.1",
     "pytest>=9.2.0",
     "ruff>=0.17.5",
     "zensical>=0.1.2",
@@ -30,3 +38,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "uv"
+tag_format = "v$version"
+update_changelog_on_bump = true
+major_version_zero = true
