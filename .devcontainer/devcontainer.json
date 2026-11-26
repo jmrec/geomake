@@ -1,5 +1,5 @@
 {
-  "name": "ph-administrative-boundaries",
+  "name": "geomake",
   "build": {
     "context": ".",
     "dockerfile": "Dockerfile"
